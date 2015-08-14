@@ -4619,31 +4619,32 @@ done:
 	return target;
 }
 /*
- * get_cpu_usage returns the amount of capacity of a CPU that is used by CFS
+ * cpu_util returns the amount of capacity of a CPU that is used by CFS
  * tasks. The unit of the return value must be the one of capacity so we can
- * compare the usage with the capacity of the CPU that is available for CFS
- * task (ie cpu_capacity).
+ * compare the utilization with the capacity of the CPU that is available for
+ * CFS task (ie cpu_capacity).
  * cfs.avg.util_avg is the sum of running time of runnable tasks on a
  * CPU. It represents the amount of utilization of a CPU in the range
- * [0..SCHED_LOAD_SCALE].  The usage of a CPU can't be higher than the full
- * capacity of the CPU because it's about the running time on this CPU.
+ * [0..SCHED_LOAD_SCALE]. The utilization of a CPU can't be higher than the
+ * full capacity of the CPU because it's about the running time on this CPU.
  * Nevertheless, cfs.avg.util_avg can be higher than SCHED_LOAD_SCALE
  * because of unfortunate rounding in util_avg or just
  * after migrating tasks until the average stabilizes with the new running
- * time. So we need to check that the usage stays into the range
+ * time. So we need to check that the utilization stays into the range
  * [0..cpu_capacity_orig] and cap if necessary.
- * Without capping the usage, a group could be seen as overloaded (CPU0 usage
- * at 121% + CPU1 usage at 80%) whereas CPU1 has 20% of available capacity
+ * Without capping the utilization, a group could be seen as overloaded (CPU0
+ * utilization at 121% + CPU1 utilization at 80%) whereas CPU1 has 20% of
+ * available capacity.
  */
-static int get_cpu_usage(int cpu)
+static int cpu_util(int cpu)
 {
-	unsigned long usage = cpu_rq(cpu)->cfs.avg.util_avg;
+	unsigned long util = cpu_rq(cpu)->cfs.avg.util_avg;
 	unsigned long capacity = capacity_orig_of(cpu);
 
-	if (usage >= SCHED_LOAD_SCALE)
+	if (util >= SCHED_LOAD_SCALE)
 		return capacity;
 
-	return (usage * capacity) >> SCHED_LOAD_SHIFT;
+	return (util * capacity) >> SCHED_LOAD_SHIFT;
 }
 
 /*
@@ -5760,7 +5761,7 @@ struct sg_lb_stats {
 	unsigned long sum_weighted_load; /* Weighted load of group's tasks */
 	unsigned long load_per_task;
 	unsigned long group_capacity;
-	unsigned long group_usage; /* Total usage of the group */
+	unsigned long group_util; /* Total utilization of the group */
 	unsigned int sum_nr_running; /* Nr tasks running in the group */
 	unsigned int group_capacity_factor;
 	unsigned int idle_cpus;
@@ -6004,29 +6005,33 @@ static inline int sg_imbalanced(struct sched_group *group)
 }
 
 /*
- * Compute the group capacity factor.
- *
- * Avoid the issue where N*frac(smt_capacity) >= 1 creates 'phantom' cores by
- * first dividing out the smt factor and computing the actual number of cores
- * and limit unit capacity with that.
+ * group_has_capacity returns true if the group has spare capacity that could
+ * be used by some tasks.
+ * We consider that a group has spare capacity if the  * number of task is
+ * smaller than the number of CPUs or if the utilization is lower than the
+ * available capacity for CFS tasks.
+ * For the latter, we use a threshold to stabilize the state, to take into
+ * account the variance of the tasks' load and to return true if the available
+ * capacity in meaningful for the load balancer.
+ * As an example, an available capacity of 1% can appear but it doesn't make
+ * any benefit for the load balance.
  */
 static inline int sg_capacity_factor(struct lb_env *env, struct sched_group *group)
 {
 	unsigned int capacity_factor, smt, cpus;
 	unsigned int capacity, capacity_orig;
 
-	capacity = group->sgc->capacity;
-	capacity_orig = group->sgc->capacity_orig;
-	cpus = group->group_weight;
+	if ((sgs->group_capacity * 100) >
+			(sgs->group_util * env->sd->imbalance_pct))
+		return true;
 
 	/* smt := ceil(cpus / capacity), assumes: 1 < smt_capacity < 2 */
 	smt = DIV_ROUND_UP(SCHED_CAPACITY_SCALE * cpus, capacity_orig);
 	capacity_factor = cpus / smt; /* cores */
 
-	capacity_factor = min_t(unsigned,
-		capacity_factor, DIV_ROUND_CLOSEST(capacity, SCHED_CAPACITY_SCALE));
-	if (!capacity_factor)
-		capacity_factor = fix_small_capacity(env->sd, group);
+	if ((sgs->group_capacity * 100) <
+			(sgs->group_util * env->sd->imbalance_pct))
+		return true;
 
 	return capacity_factor;
 }
@@ -6072,7 +6077,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 			load = source_load(i, load_idx);
 
 		sgs->group_load += load;
-		sgs->group_usage += get_cpu_usage(i);
+		sgs->group_util += cpu_util(i);
 		sgs->sum_nr_running += rq->cfs.h_nr_running;
 
 		if (rq->nr_running > 1)
