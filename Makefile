@@ -402,6 +402,13 @@ KBUILD_CFLAGS   := -Werror -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-strict-aliasing -fno-common \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
+		   -Wno-error=implicit-function-declaration \
+		   -Wno-implicit-function-declaration \
+		   -Wno-error=discarded-array-qualifiers \
+		   -Wno-error=incompatible-pointer-types \
+		   -Wno-error=unused-variable \
+		   -Wno-error=return-local-addr \
+		   -Wno-error=unused-function \
 		   -std=gnu89
 
 KBUILD_AFLAGS_KERNEL :=

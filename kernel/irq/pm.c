@@ -2,6 +2,7 @@
  * linux/kernel/irq/pm.c
  *
  * Copyright (C) 2009 Rafael J. Wysocki <rjw@sisk.pl>, Novell Inc.
+ * Copyright (C) 2018 XiaoMi, Inc.
  *
  * This file contains power management functions related to interrupts.
  */
@@ -13,6 +14,18 @@
 #include <linux/syscore_ops.h>
 #include <linux/wakeup_reason.h>
 #include "internals.h"
+
+void pm_get_wakeup_interrupt(struct irq_desc *desc)
+{
+	log_suspend_abort_reason("Wakeup IRQ detected during suspend: %d %s",
+			desc->irq_data.irq,
+			desc->action && desc->action->name ?
+			desc->action->name : "");
+	pr_info("Wakeup IRQ detected during suspend: %d %s",
+			desc->irq_data.irq,
+			desc->action && desc->action->name ?
+			desc->action->name : "");
+}
 
 bool irq_pm_check_wakeup(struct irq_desc *desc)
 {
@@ -123,8 +136,6 @@ void suspend_device_irqs(void)
 		unsigned long flags;
 		bool sync;
 
-		if (irq_settings_is_nested_thread(desc))
-			continue;
 		raw_spin_lock_irqsave(&desc->lock, flags);
 		sync = suspend_device_irq(desc, irq);
 		raw_spin_unlock_irqrestore(&desc->lock, flags);
@@ -164,8 +175,6 @@ static void resume_irqs(bool want_early)
 			desc->action->flags & IRQF_EARLY_RESUME;
 
 		if (!is_early && want_early)
-			continue;
-		if (irq_settings_is_nested_thread(desc))
 			continue;
 
 		raw_spin_lock_irqsave(&desc->lock, flags);
