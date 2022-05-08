@@ -409,6 +409,9 @@ KBUILD_CFLAGS   := -Werror -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -Wno-error=unused-variable \
 		   -Wno-error=return-local-addr \
 		   -Wno-error=unused-function \
+		   -Wno-error \
+		   -Wno-unknown-warning-option \
+		   -Wno-unused-command-line-argument \
 		   -std=gnu89
 
 KBUILD_AFLAGS_KERNEL :=
